@@ -13,6 +13,7 @@ class DiscogsAPI {
 	public $api_url;
 	public $errors = array();
 	public $anonymous_artists = array('Various','Unknown Artist');
+	public $api_requests = 0;
 
 	function __construct(){
 		global $useragent;
@@ -72,7 +73,7 @@ class DiscogsAPI {
 	
 		$data = json_decode($json,true);
 		if(json_last_error() == JSON_ERROR_NONE){
-			if($data['error']) {
+			if( isset($data['error'])) {
 				$this->log_error("Discogs API: ". $data['error']);
 				$this->log_error("API URL: ". $url);
 				$this->log_error("Discogs Response: ". $json);
@@ -86,6 +87,8 @@ class DiscogsAPI {
 			$this->log_error("Discogs Response: ". $json);
 			return false;		
 		}
+		
+		$this->api_requests++;
 		
 		return $data;
 	}
@@ -141,6 +144,10 @@ class DiscogsAPI {
 			return false;
 		}
 	}
+	
+	public function cleanstring($string){
+		$string = iconv("UTF-8","UTF-8//IGNORE",$string);
+	}
 
 
 
@@ -148,21 +155,20 @@ class DiscogsAPI {
 
 class Release extends DiscogsAPI {
 	public $release;
-	public $release_id;
+	public $id;
 	public $data;
-	public $labels;
-	public $artists;
 	public $unique_artists;
+	public $artists_obj, $labels_obj;
 	/* Field-level strings */
-	public $country, $title, $notes, $released, $released_formatted, $year, $master_id;
+	public $artists, $labels, $genres, $styles, $catalog_numbers, $images, $videos, $extraartists, $tracks, $country, $title, $notes, $released, $released_formatted, $year, $master_id;
 	
 	
-	public function __construct($release_id){
+	public function __construct($release_id=''){
 		parent::__construct();
 	
 		if($release_id){
-			$this->release_id = $release_id;
-			$this->load();
+			$this->id = $release_id;
+			return $this->load();
 		}
 	}
 	
@@ -171,49 +177,63 @@ class Release extends DiscogsAPI {
  * Main function to load Release data from API.  $Release_ID must be set.
 */
 	public function load(){
-		if(! $this->release_id){
+		if(! $this->id){
 			$this->log_error("No release id set.");
 			return false;
 		}
 		
 		if(! $this->data){
-			$this->data = $this->getRelease($this->release_id);
+			$this->data = $this->getRelease($this->id);
 		}
 		
 		/*Create root release array */
 		$this->release = &$this->data['resp']['release'];
 		
-		/* Set field-level strings */		
-		$this->country 		= (string) $this->release['country'];
-		$this->title 		= (string) $this->release['title'];
-		$this->notes 		= (string) $this->release['notes'];
-		$this->released		= (string) $this->release['released'];
-		$this->released_formatted 		= (string) $this->release['released_formatted'];
-		$this->year			= (string) $this->release['year'];
-		$this->master_id	= (string) $this->release['master_id'];
+		/* Set field-level variables */
+			// Arrays
+			$this->artists 		= $this->release['artists'];
+			$this->genres		= $this->release['genres'];
+			$this->styles		= $this->release['styles'];
+			$this->images		= $this->release['images'];
+			$this->videos		= $this->release['videos'];
+			$this->tracks		= $this->release['tracklist'];
+			$this->extraartists		= $this->release['extraartists'];
+			foreach($this->release['labels'] as $l){
+				$this->labels[] = $l['name'];
+				$this->catalog_numbers[] = $l['catno'];
+			}
+
+			// Single values
+			$this->country 		= (string) $this->release['country'];
+			$this->title 		= (string) $this->release['title'];
+			$this->notes 		= (string) $this->release['notes'];
+			$this->released		= (string) $this->release['released'];
+			$this->released_formatted 		= (string) $this->release['released_formatted'];
+			$this->year			= (string) $this->release['year'];
+			$this->master_id	= (int) $this->release['master_id'];
 		
 		return $this->data;
 	}
 	
 	private function checkdata(){
-		if(! $this->release_id){
+		if(! $this->id){
 			$this->log_error("No release id set.");
 			return false;
 		}
 		if(! $this->data){
-			$this->load($this->release_id);
+			$this->load($this->id);
 		}
 		$release =  &$this->data['resp']['release'];
 		return $release;
 	}
 	
 	public function find_artists($depth=1){
-		if(! $this->release_id){
+		if(! $this->id){
 			$this->log_error("No release id set.");
 			return false;
 		}
 		if(! $this->data){
-			$this->load($this->release_id);
+			$this->load($this->id);
 		}
 		$release =  &$this->release;
 
@@ -228,16 +248,16 @@ class Release extends DiscogsAPI {
 			}
 		}
 		$this->unique_artists = array_unique($artist_arr);
-		return array_unique($artist_arr);
+		return $this->unique_artists;
 	}
 	
 	public function artists_str(){
-		if(! $this->release_id){
+		if(! $this->id){
 			$this->log_error("No release id set.");
 			return false;
 		}
 		if(! $this->data){
-			$this->load($this->release_id);
+			$this->load($this->id);
 		}
 		
 		$release =  &$this->release;
@@ -252,12 +272,12 @@ class Release extends DiscogsAPI {
 	} //end artist_str
 
 	public function load_artists($depth=1){
-		if(! $this->release_id){
+		if(! $this->id){
 			$this->log_error("No release id set.");
 			return false;
 		}
 		if(! $this->data){
-			$this->load($this->release_id);
+			$this->load($this->id);
 		}
 		
 			if(! count($this->unique_artists) == 0 ){
@@ -273,20 +293,20 @@ class Release extends DiscogsAPI {
 					$at[] 	= $artist;
 				}
 			}
-			$this->artists = $at;
+			$this->artists_obj = $at;
 
-		return $this->artists;
+		return $this->artists_obj;
 	}
 
 
 
 	public function labels_str($sep = ', '){
-		if(! $this->release_id){
+		if(! $this->id){
 			$this->log_error("No release id set.");
 			return false;
 		}
 		if(! $this->data){
-			$this->load($this->release_id);
+			$this->load($this->id);
 		}
 		
 		$release =  &$this->release;
@@ -301,12 +321,12 @@ class Release extends DiscogsAPI {
 
 
 	public function catnos_str($sep = ', '){
-		if(! $this->release_id){
+		if(! $this->id){
 			$this->log_error("No release id set.");
 			return false;
 		}
 		if(! $this->data){
-			$this->load($this->release_id);
+			$this->load($this->id);
 		}
 		
 		$release =  &$this->release;
@@ -321,12 +341,12 @@ class Release extends DiscogsAPI {
 
 	
 	public function load_labels(){
-		if(! $this->release_id){
+		if(! $this->id){
 			$this->log_error("No release id set.");
 			return false;
 		}
 		if(! $this->data){
-			$this->load($this->release_id);
+			$this->load($this->id);
 		}
 		if(! $this->labels ){
 			$release =  &$this->release;
@@ -340,16 +360,16 @@ class Release extends DiscogsAPI {
 			}
 			$this->labels = $l;
 		}
-		return $this->labels;
+		return $this->labels_obj;
 	}
 	
 	public function formats_str($sep=', '){
-		if(! $this->release_id){
+		if(! $this->id){
 			$this->log_error("No release id set.");
 			return false;
 		}
 		if(! $this->data){
-			$this->load($this->release_id);
+			$this->load($this->id);
 		}
 		
 		$release =  &$this->release;
@@ -364,12 +384,12 @@ class Release extends DiscogsAPI {
 	} //end formats
 
 	public function genres_str($sep=', '){
-		if(! $this->release_id){
+		if(! $this->id){
 			$this->log_error("No release id set.");
 			return false;
 		}
 		if(! $this->data){
-			$this->load($this->release_id);
+			$this->load($this->id);
 		}
 		
 		$release =  &$this->release;
@@ -383,12 +403,12 @@ class Release extends DiscogsAPI {
 
 
 	public function styles_str($sep=', '){
-		if(! $this->release_id){
+		if(! $this->id){
 			$this->log_error("No release id set.");
 			return false;
 		}
 		if(! $this->data){
-			$this->load($this->release_id);
+			$this->load($this->id);
 		}
 		
 		$release =  &$this->release;
@@ -401,12 +421,12 @@ class Release extends DiscogsAPI {
 	} //end styles
 
 	public function tracks(){
-		if(! $this->release_id){
+		if(! $this->id){
 			$this->log_error("No release id set.");
 			return false;
 		}
 		if(! $this->data){
-			$this->load($this->release_id);
+			$this->load($this->id);
 		}
 		
 		$release =  &$this->release;
@@ -422,27 +442,28 @@ class Release extends DiscogsAPI {
 
 
 class MasterRelease extends DiscogsAPI {
-	public $master_id;
+	public $id;
 	public $data;
 	public $masterrelease;
 	public $releases;
 	public $title, $videos, $versions, $main_release, $notes, $artists, $year, $images, $tracklist;
 	
-	public function __construct($master_id){
+	public function __construct($master_id=''){
 		parent::__construct();
-
-		$this->master_id = $master_id;
-		$this->load();
+		if($master_id){
+			$this->id = $master_id;
+			return $this->load();
+		}
 	}
 	
 	public function load(){
-		if(! $this->master_id){
+		if(! $this->id){
 			$this->log_error("No Master id set.");
 			return false;
 		}
 		
 		if(! $this->data){
-			$this->data = $this->getMasterRelease($this->master_id);
+			$this->data = $this->getMasterRelease($this->id);
 		} 
 
 		$this->masterrelease = &$this->data['resp']['master'];
@@ -467,12 +488,12 @@ class MasterRelease extends DiscogsAPI {
 	}
 	
 	public function artists_str(){
-		if(! $this->master_id){
+		if(! $this->id){
 			$this->log_error("No Master id set.");
 			return false;
 		}
 		if(! $this->data){
-			$this->load($this->master_id);
+			$this->load($this->id);
 		}
 		
 		$master = &$this->data['resp']['master'];
@@ -487,12 +508,12 @@ class MasterRelease extends DiscogsAPI {
 	} //end artist_str
 
 	public function labels_str($sep = ', '){
-		if(! $this->master_id){
+		if(! $this->id){
 			$this->log_error("No Master id set.");
 			return false;
 		}
 		if(! $this->data){
-			$this->load($this->master_id);
+			$this->load($this->id);
 		}
 		
 		$master = &$this->data['resp']['master'];
@@ -506,12 +527,12 @@ class MasterRelease extends DiscogsAPI {
 	} //end labels_str
 	
 	public function formats_str($sep='; '){
-		if(! $this->master_id){
+		if(! $this->id){
 			$this->log_error("No Master id set.");
 			return false;
 		}
 		if(! $this->data){
-			$this->load($this->master_id);
+			$this->load($this->id);
 		}
 		
 		$master = &$this->data['resp']['master'];
@@ -524,12 +545,12 @@ class MasterRelease extends DiscogsAPI {
 	} //end formats
 
 	public function genres_str($sep=', '){
-		if(! $this->master_id){
+		if(! $this->id){
 			$this->log_error("No Master id set.");
 			return false;
 		}
 		if(! $this->data){
-			$this->load($this->master_id);
+			$this->load($this->id);
 		}
 		
 		$master = &$this->data['resp']['master'];
@@ -543,12 +564,12 @@ class MasterRelease extends DiscogsAPI {
 
 
 	public function styles_str($sep=', '){
-		if(! $this->master_id){
+		if(! $this->id){
 			$this->log_error("No Master id set.");
 			return false;
 		}
 		if(! $this->data){
-			$this->load($this->master_id);
+			$this->load($this->id);
 		}
 		
 		$master = &$this->data['resp']['master'];
@@ -562,12 +583,12 @@ class MasterRelease extends DiscogsAPI {
 
 
 	public function load_releases(){
-		if(! $this->master_id){
+		if(! $this->id){
 			$this->log_error("No Master id set.");
 			return false;
 		}
 		if(! $this->data){
-			$this->load($this->master_id);
+			$this->load($this->id);
 		}
 		
 		if(! $this->releases ){		
@@ -576,7 +597,7 @@ class MasterRelease extends DiscogsAPI {
 			foreach($master['versions'] as $v) {
 				$release = new Release;
 				$release->useragent = $this->useragent;
-				$release->release_id = $v['id'];
+				$release->id = $v['id'];
 				$release->load();
 				$r[] = $release;
 			}
@@ -594,11 +615,12 @@ class Label extends DiscogsAPI {
 	public $label;
 	public $name, $contactinfo, $parentlabel, $images, $sublabels;
 
-	public function __construct($label){
+	public function __construct($label=''){
 		parent::__construct();
-
-		$this->id = $label;
-		$this->load();
+		if($label){
+			$this->id = $label;
+			return $this->load();
+		}
 	}
 
 	public function load($releases=false){
@@ -631,11 +653,12 @@ class Artist extends DiscogsAPI {
 	public $artist;
 	public $name, $namevariations, $urls, $images, $realname, $aliases;
 
-	public function __construct($artist){
+	public function __construct($artist=''){
 		parent::__construct();
-
-		$this->id = $artist;
-		$this->load();
+		if($artist){
+			$this->id = $artist;
+			return $this->load();
+		}
 	}
 
 	public function load($releases=false){
@@ -677,9 +700,11 @@ class Search extends DiscogsAPI {
 	public $exact_results;
 	public $max_page=1;
 	
-	function __construct(){
+	function __construct($search=''){
 		parent::__construct();
-	
+		if($search){
+			return $this->search($search);
+		}
 	}
 	
 	public function search($search ='', $type = '', $page = 1){

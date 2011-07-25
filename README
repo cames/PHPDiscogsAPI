@@ -1,0 +1,132 @@
+A simple set of PHP Classes for accessing the Discogs.com API.
+
+All data is requested in using the JSON format option of the API.
+
+One note to the Discogs.com API: The user must provide a useragent string, and thus a useragent must be provided in order to make these Classes work.  Read here, http://www.discogs.com/help/forums/topic/234138 , and here, http://www.discogs.com/help/api , for more information.
+
+As noted above, a useragent string must be provided to download anything.  The base Class, DiscogsAPI, looks for a global $useragent variable upon creation, and that is perhaps the easiest way to set it, because it also allows you to use the shorter declarations.
+
+The Classes are all wrapped in a DiscogsAPI PHP namespace.
+
+The main class is DiscogsAPI.  It handles all the JSON requests, error checking, and a few other functions.  Then there are four subclasses--Release, MasterRelease, Artist, and Label--for the primary Discogs.com API object.  These subclasses all use a variable "$id" to query the API.  For an Artist or Label, the ID would be the name ($dapi_artist->id = 'Aphrodite'), and for a Release or or MasterRelease it's the numeric ID ($dapi_release->id = 542242).  
+
+Finally, there is a Search class for querying the database. 
+
+-- Release
+The Release class fetches a single Discogs release by release_id from the API.  It parses the data into arrays (artists, tracks, genres, styles, videos, images, and labels for example) and strings/ints (title, master_id, released, etc.).  There are functions that also turn the array data into strings with an optional delimiter.
+
+-- Master Release
+Works much the same way as Release
+
+-- Artist
+The Artist class is a little simpler, as there is less data returned.
+
+-- Label
+Works a lot like Artist.
+
+-- Example 1, using global $useragent:
+require_once('discogsapi.class.php');
+
+$useragent = "PHPDAPIClient/0.1" //PLEASE CHANGE THIS to something unique, like your Discogs.com user name;
+
+$release_id = 542242 //Oh Sheila;
+$dapi_release = new DiscogsAPI\Release($release_id);
+
+echo($dapi_release->title);
+/* Returns :
+	Oh Sheila
+*/
+
+print_r($dapi_release->artists);
+/* Returns
+	Array
+	(
+		[0] => Array
+			(
+				[tracks] => 
+				[role] => 
+				[anv] => 
+				[join] => 
+				[name] => Ready For The World
+			)
+	
+	)
+*/
+
+print_r($dapi_release->tracks);
+/* Returns:
+	Array
+	(
+		[0] => Array
+			(
+				[duration] => 6:48
+				[position] => A
+				[title] => Oh Sheila (Extended Version)
+			)
+	
+		[1] => Array
+			(
+				[duration] => 4:00
+				[position] => B1
+				[title] => Oh Sheila (Dubstrumental)
+			)
+	
+		[2] => Array
+			(
+				[duration] => 3:54
+				[position] => B2
+				[title] => Oh Sheila (Acappella)
+			)
+	
+	)
+*/
+
+-- Example 2, setting $useragent at the Class level:
+require_once('discogsapi.class.php');
+
+$dapi_release = new DiscogsAPI\Release;
+$dapi_release->useragent = "PHPDAPIClient/0.1" //PLEASE CHANGE THIS to something unique, like your Discogs.com user name;
+$dapi_release->id = 542242 //Oh Sheila;
+$dapi_release->load();
+
+-- Example 3, global $useragent, compilation release
+require_once('discogsapi.class.php');
+
+$useragent = "PHPDAPIClient/0.1" //PLEASE CHANGE THIS to something unique, like your Discogs.com user name;
+
+$release_id = 141813 //Jump Up, Show Down;
+
+
+$dapi_release = new DiscogsAPI\Release($release_id);
+
+echo($dapi_release->title);
+/* Returns:
+	Jump Up Touch Down
+*/
+
+print_r($dapi_release->find_artists(2) ); //Depth argument, 1 is release only, 2 includes tracks
+/* Returns:
+	Array
+	(
+		[0] => Various
+		[1] => Buddha Monk
+		[2] => Aphrodite
+		[3] => Usual Suspects
+		[4] => Cypher (4)
+		[5] => Surreal & Parameter II
+		[6] => 175 Crew
+		[7] => DJ Zinc
+		[10] => Click 'n Cycle
+		[11] => Capone
+		[12] => DJ Quantum
+		[13] => Ed Solo
+		[14] => Mulder
+		[15] => Pepe Delux�
+		[16] => Daz Ellis
+		[17] => Ganja Kru, The
+		[18] => Ram Trilogy
+		[19] => John B
+		[20] => Psy 3
+		[21] => Brockie & Ed Solo
+	)
+*/
